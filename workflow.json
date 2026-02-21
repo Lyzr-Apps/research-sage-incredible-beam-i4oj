@@ -1,0 +1,92 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input_node",
+        "type": "Input",
+        "label": "Research Interest Query",
+        "nodeCategory": "input"
+      },
+      {
+        "id": "manager_agent",
+        "type": "Agent",
+        "label": "Research Coordinator",
+        "nodeCategory": "agent",
+        "agent_id": "699960670ab3a50ca248548a"
+      },
+      {
+        "id": "discovery_agent",
+        "type": "Agent",
+        "label": "Paper Discovery Agent",
+        "nodeCategory": "agent",
+        "agent_id": "69996050746ef9435cac7ef0"
+      },
+      {
+        "id": "analysis_agent",
+        "type": "Agent",
+        "label": "Paper Analysis Agent",
+        "nodeCategory": "agent",
+        "agent_id": "69996050a63b170a3b8170a6"
+      },
+      {
+        "id": "output_node",
+        "type": "Output",
+        "label": "Research Analysis Output",
+        "nodeCategory": "end"
+      }
+    ],
+    "edges": [
+      {
+        "source": "input_node",
+        "target": "manager_agent"
+      },
+      {
+        "source": "manager_agent",
+        "target": "discovery_agent"
+      },
+      {
+        "source": "manager_agent",
+        "target": "analysis_agent"
+      },
+      {
+        "source": "manager_agent",
+        "target": "output_node"
+      }
+    ]
+  },
+  "agents": {
+    "manager_agent": {
+      "agent_id": "699960670ab3a50ca248548a",
+      "name": "Research Coordinator",
+      "type": "manager",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.4,
+      "top_p": 0.95,
+      "managed_agents": [
+        "69996050746ef9435cac7ef0",
+        "69996050a63b170a3b8170a6"
+      ]
+    },
+    "discovery_agent": {
+      "agent_id": "69996050746ef9435cac7ef0",
+      "name": "Paper Discovery Agent",
+      "type": "sub-agent",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.3,
+      "top_p": 1,
+      "tools": ["ARXIV__SEARCH_PAPERS", "ARXIV__GET_PAPER_METADATA", "ARXIV__DOWNLOAD_PAPER"]
+    },
+    "analysis_agent": {
+      "agent_id": "69996050a63b170a3b8170a6",
+      "name": "Paper Analysis Agent",
+      "type": "sub-agent",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.5,
+      "top_p": 0.95,
+      "tools": ["ARXIV__SEARCH_PAPERS", "ARXIV__GET_PAPER_METADATA", "ARXIV__DOWNLOAD_PAPER"]
+    }
+  }
+}

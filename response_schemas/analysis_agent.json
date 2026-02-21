@@ -1,0 +1,66 @@
+{
+  "agent_id": "69996050a63b170a3b8170a6",
+  "agent_name": "Paper Analysis Agent",
+  "agent_type": "json",
+  "accessor": "json",
+  "has_module_outputs": false,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "AgentResponse",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "abstract_summary": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "literature_review": {
+            "type": "string"
+          },
+          "methodology": {
+            "type": "string"
+          },
+          "experimental_setup": {
+            "type": "string"
+          },
+          "results": {
+            "type": "string"
+          },
+          "discussion": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "string"
+          },
+          "conclusion": {
+            "type": "string"
+          },
+          "future_work": {
+            "type": "string"
+          },
+          "key_contributions": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "abstract_summary",
+          "introduction",
+          "literature_review",
+          "methodology",
+          "experimental_setup",
+          "results",
+          "discussion",
+          "limitations",
+          "conclusion",
+          "future_work",
+          "key_contributions"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

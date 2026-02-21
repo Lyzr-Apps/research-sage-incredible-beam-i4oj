@@ -1,0 +1,94 @@
+{
+  "agent_id": "699960670ab3a50ca248548a",
+  "agent_name": "Research Coordinator",
+  "agent_type": "json",
+  "accessor": "json",
+  "has_module_outputs": false,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "AgentResponse",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "paper_title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "string"
+          },
+          "publication_date": {
+            "type": "string"
+          },
+          "arxiv_link": {
+            "type": "string"
+          },
+          "categories": {
+            "type": "string"
+          },
+          "selection_reasoning": {
+            "type": "string"
+          },
+          "abstract_summary": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "literature_review": {
+            "type": "string"
+          },
+          "methodology": {
+            "type": "string"
+          },
+          "experimental_setup": {
+            "type": "string"
+          },
+          "results": {
+            "type": "string"
+          },
+          "discussion": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "string"
+          },
+          "conclusion": {
+            "type": "string"
+          },
+          "future_work": {
+            "type": "string"
+          },
+          "key_contributions": {
+            "type": "string"
+          },
+          "follow_up_response": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_title",
+          "authors",
+          "publication_date",
+          "arxiv_link",
+          "categories",
+          "selection_reasoning",
+          "abstract_summary",
+          "introduction",
+          "literature_review",
+          "methodology",
+          "experimental_setup",
+          "results",
+          "discussion",
+          "limitations",
+          "conclusion",
+          "future_work",
+          "key_contributions",
+          "follow_up_response"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

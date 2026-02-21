@@ -1,0 +1,32 @@
+{
+  "agents": {
+    "Research Coordinator": {
+      "agent_id": "699960670ab3a50ca248548a",
+      "node_id": "manager_agent",
+      "type": "manager",
+      "is_primary": true,
+      "managed_agents": [
+        "69996050746ef9435cac7ef0",
+        "69996050a63b170a3b8170a6"
+      ]
+    },
+    "Paper Discovery Agent": {
+      "agent_id": "69996050746ef9435cac7ef0",
+      "node_id": "discovery_agent",
+      "type": "sub-agent",
+      "is_primary": false
+    },
+    "Paper Analysis Agent": {
+      "agent_id": "69996050a63b170a3b8170a6",
+      "node_id": "analysis_agent",
+      "type": "sub-agent",
+      "is_primary": false
+    }
+  },
+  "primary_agent_id": "699960670ab3a50ca248548a",
+  "agent_ids": [
+    "699960670ab3a50ca248548a",
+    "69996050746ef9435cac7ef0",
+    "69996050a63b170a3b8170a6"
+  ]
+}

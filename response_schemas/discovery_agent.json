@@ -1,0 +1,50 @@
+{
+  "agent_id": "69996050746ef9435cac7ef0",
+  "agent_name": "Paper Discovery Agent",
+  "agent_type": "json",
+  "accessor": "json",
+  "has_module_outputs": false,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "AgentResponse",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "paper_title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "string"
+          },
+          "publication_date": {
+            "type": "string"
+          },
+          "abstract": {
+            "type": "string"
+          },
+          "arxiv_link": {
+            "type": "string"
+          },
+          "categories": {
+            "type": "string"
+          },
+          "selection_reasoning": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_title",
+          "authors",
+          "publication_date",
+          "abstract",
+          "arxiv_link",
+          "categories",
+          "selection_reasoning"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}
