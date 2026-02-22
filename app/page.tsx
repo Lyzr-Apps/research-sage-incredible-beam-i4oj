@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { callAIAgent, AIAgentResponse } from '@/lib/aiAgent'
+import { callAIAgent, AIAgentResponse, uploadFiles } from '@/lib/aiAgent'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -10,7 +10,8 @@ import {
   FiChevronDown, FiChevronUp, FiFileText, FiBookOpen,
   FiLayers, FiTool, FiSettings, FiBarChart2, FiMessageCircle,
   FiAlertTriangle, FiCheckCircle, FiArrowRight, FiStar,
-  FiClock, FiTrash2, FiLoader, FiCpu
+  FiClock, FiTrash2, FiLoader, FiCpu,
+  FiPaperclip, FiImage, FiFilm, FiFile
 } from 'react-icons/fi'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -18,6 +19,14 @@ import {
 const AGENT_ID = '699960670ab3a50ca248548a'
 
 const LOADING_PHASES = [
+  'Searching papers...',
+  'Analyzing paper...',
+  'Preparing breakdown...',
+]
+
+const UPLOAD_LOADING_PHASES = [
+  'Uploading files...',
+  'Processing attachments...',
   'Searching papers...',
   'Analyzing paper...',
   'Preparing breakdown...',
@@ -75,6 +84,13 @@ interface PaperAnalysis {
   follow_up_response: string
 }
 
+interface FileAttachment {
+  file: File
+  id: string
+  preview?: string
+  type: 'image' | 'video' | 'document'
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -83,6 +99,7 @@ interface Message {
   isLoading?: boolean
   loadingPhase?: string
   isError?: boolean
+  attachments?: { name: string; type: 'image' | 'video' | 'document'; preview?: string }[]
 }
 
 interface Conversation {
@@ -558,10 +575,65 @@ export default function Page() {
   const [loadingPhase, setLoadingPhase] = useState(LOADING_PHASES[0])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sampleDataOn, setSampleDataOn] = useState(false)
+  const [hasFilesInRequest, setHasFilesInRequest] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const loadingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [pendingFiles, setPendingFiles] = useState<FileAttachment[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+
+  // File type detection
+  const getFileType = useCallback((file: File): 'image' | 'video' | 'document' => {
+    if (file.type.startsWith('image/')) return 'image'
+    if (file.type.startsWith('video/')) return 'video'
+    return 'document'
+  }, [])
+
+  // Handle file selection
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const newAttachments: FileAttachment[] = Array.from(files).map((file) => {
+      const type = getFileType(file)
+      const attachment: FileAttachment = {
+        file,
+        id: generateId(),
+        type,
+      }
+      if (type === 'image') {
+        attachment.preview = URL.createObjectURL(file)
+      }
+      return attachment
+    })
+
+    setPendingFiles((prev) => [...prev, ...newAttachments])
+
+    // Reset file input so the same file can be re-selected
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [getFileType])
+
+  // Remove a pending file
+  const removePendingFile = useCallback((fileId: string) => {
+    setPendingFiles((prev) => {
+      const removed = prev.find((f) => f.id === fileId)
+      if (removed?.preview) URL.revokeObjectURL(removed.preview)
+      return prev.filter((f) => f.id !== fileId)
+    })
+  }, [])
+
+  // Clean up preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      pendingFiles.forEach((f) => {
+        if (f.preview) URL.revokeObjectURL(f.preview)
+      })
+    }
+  }, [])
 
   // Get active conversation
   const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null
@@ -574,24 +646,26 @@ export default function Page() {
   // Loading phase cycling
   useEffect(() => {
     if (isLoading) {
+      const phases = hasFilesInRequest ? UPLOAD_LOADING_PHASES : LOADING_PHASES
       let phaseIndex = 0
-      setLoadingPhase(LOADING_PHASES[0])
+      setLoadingPhase(phases[0])
       loadingIntervalRef.current = setInterval(() => {
-        phaseIndex = (phaseIndex + 1) % LOADING_PHASES.length
-        setLoadingPhase(LOADING_PHASES[phaseIndex])
+        phaseIndex = (phaseIndex + 1) % phases.length
+        setLoadingPhase(phases[phaseIndex])
       }, 3000)
     } else {
       if (loadingIntervalRef.current) {
         clearInterval(loadingIntervalRef.current)
         loadingIntervalRef.current = null
       }
+      setHasFilesInRequest(false)
     }
     return () => {
       if (loadingIntervalRef.current) {
         clearInterval(loadingIntervalRef.current)
       }
     }
-  }, [isLoading])
+  }, [isLoading, hasFilesInRequest])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -663,9 +737,11 @@ export default function Page() {
   const handleSubmit = useCallback(
     async (overrideMessage?: string) => {
       const messageText = overrideMessage ?? inputValue.trim()
-      if (!messageText || isLoading) return
+      if ((!messageText && pendingFiles.length === 0) || isLoading) return
 
+      const filesToUpload = [...pendingFiles]
       setInputValue('')
+      setPendingFiles([])
 
       // Get or create conversation
       let conv = activeConversation
@@ -680,17 +756,26 @@ export default function Page() {
 
       // Update title if first message
       if (conv.messages.length === 0) {
-        const title = messageText.length > 50 ? messageText.slice(0, 50) + '...' : messageText
+        const titleText = messageText || (filesToUpload.length > 0 ? `[${filesToUpload.length} file(s)] ${filesToUpload.map(f => f.file.name).join(', ')}` : 'New Search')
+        const title = titleText.length > 50 ? titleText.slice(0, 50) + '...' : titleText
         setConversations((prev) =>
           prev.map((c) => (c.id === convId ? { ...c, title } : c))
         )
       }
 
-      // Add user message
+      // Build attachment metadata for display in the message
+      const attachmentMeta = filesToUpload.map((f) => ({
+        name: f.file.name,
+        type: f.type,
+        preview: f.type === 'image' ? f.preview : undefined,
+      }))
+
+      // Add user message with attachments
       const userMsg: Message = {
         id: generateId(),
         role: 'user',
-        content: messageText,
+        content: messageText || (filesToUpload.length > 0 ? `Analyze the attached file(s): ${filesToUpload.map(f => f.file.name).join(', ')}` : ''),
+        attachments: attachmentMeta.length > 0 ? attachmentMeta : undefined,
       }
       addMessage(convId, userMsg)
 
@@ -704,11 +789,26 @@ export default function Page() {
       }
       addMessage(convId, loadingMsg)
 
+      if (filesToUpload.length > 0) setHasFilesInRequest(true)
       setIsLoading(true)
 
       try {
-        const result: AIAgentResponse = await callAIAgent(messageText, AGENT_ID, {
+        // Upload files if any
+        let assetIds: string[] = []
+        if (filesToUpload.length > 0) {
+          setIsUploading(true)
+          const uploadResult = await uploadFiles(filesToUpload.map((f) => f.file))
+          setIsUploading(false)
+          if (uploadResult.success && Array.isArray(uploadResult.asset_ids)) {
+            assetIds = uploadResult.asset_ids
+          }
+        }
+
+        const finalMessage = messageText || (filesToUpload.length > 0 ? `Please analyze the attached file(s): ${filesToUpload.map(f => f.file.name).join(', ')}` : '')
+
+        const result: AIAgentResponse = await callAIAgent(finalMessage, AGENT_ID, {
           session_id: conv.sessionId,
+          ...(assetIds.length > 0 ? { assets: assetIds } : {}),
         })
 
         if (result.success && result.response?.result) {
@@ -789,6 +889,7 @@ export default function Page() {
     [
       inputValue,
       isLoading,
+      pendingFiles,
       activeConversation,
       activeConversationId,
       createNewConversation,
@@ -864,12 +965,84 @@ export default function Page() {
     }
   }, [sampleDataOn])
 
+  // Drag and drop support
+  const [isDragging, setIsDragging] = useState(false)
+  const dragCounterRef = useRef(0)
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current += 1
+    if (e.dataTransfer?.types?.includes('Files')) {
+      setIsDragging(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current -= 1
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    dragCounterRef.current = 0
+
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+
+    const newAttachments: FileAttachment[] = Array.from(files).map((file) => {
+      const type = getFileType(file)
+      const attachment: FileAttachment = {
+        file,
+        id: generateId(),
+        type,
+      }
+      if (type === 'image') {
+        attachment.preview = URL.createObjectURL(file)
+      }
+      return attachment
+    })
+
+    setPendingFiles((prev) => [...prev, ...newAttachments])
+  }, [getFileType])
+
   // Determine if we have messages
   const hasMessages = (activeConversation?.messages?.length ?? 0) > 0
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen h-screen bg-background text-foreground flex overflow-hidden">
+      <div
+        className="min-h-screen h-screen bg-background text-foreground flex overflow-hidden relative"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Drag overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 bg-background/90 border-2 border-dashed border-[hsl(0,70%,55%)] flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <FiPaperclip className="w-10 h-10 text-[hsl(0,70%,55%)] mx-auto" />
+              <p className="text-lg font-serif font-semibold tracking-tight text-foreground">
+                Drop files here
+              </p>
+              <p className="text-sm text-muted-foreground font-sans tracking-tight">
+                Images, videos, PDFs, and documents
+              </p>
+            </div>
+          </div>
+        )}
         {/* ─── Sidebar overlay on mobile ─── */}
         {sidebarOpen && (
           <div
@@ -1002,6 +1175,38 @@ export default function Page() {
                         /* User message */
                         <div className="flex justify-end">
                           <div className="max-w-[80%] bg-secondary border border-border px-4 py-3 rounded-none">
+                            {/* File attachments */}
+                            {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {msg.attachments.map((att, idx) => (
+                                  <div key={idx} className="border border-border bg-card rounded-none overflow-hidden">
+                                    {att.type === 'image' && att.preview ? (
+                                      <div className="relative">
+                                        <img
+                                          src={att.preview}
+                                          alt={att.name}
+                                          className="max-w-[200px] max-h-[150px] object-cover"
+                                        />
+                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1">
+                                          <p className="text-[10px] text-white truncate font-sans">{att.name}</p>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2 px-3 py-2">
+                                        {att.type === 'video' ? (
+                                          <FiFilm className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                        ) : (
+                                          <FiFile className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                        )}
+                                        <span className="text-xs text-foreground font-sans tracking-tight truncate max-w-[150px]">
+                                          {att.name}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             <p className="text-sm font-sans tracking-tight leading-relaxed text-foreground whitespace-pre-wrap">
                               {msg.content}
                             </p>
@@ -1043,14 +1248,72 @@ export default function Page() {
           {/* ─── Input Bar ─── */}
           <div className="flex-shrink-0 border-t border-border bg-background px-4 md:px-6 py-4">
             <div className="max-w-4xl mx-auto">
+              {/* Pending files preview */}
+              {pendingFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {pendingFiles.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center gap-2 border border-border bg-card px-3 py-2 rounded-none group relative"
+                    >
+                      {f.type === 'image' && f.preview ? (
+                        <img
+                          src={f.preview}
+                          alt={f.file.name}
+                          className="w-8 h-8 object-cover rounded-none"
+                        />
+                      ) : f.type === 'video' ? (
+                        <FiFilm className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <FiFile className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      <span className="text-xs text-foreground font-sans tracking-tight max-w-[120px] truncate">
+                        {f.file.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-sans">
+                        {(f.file.size / 1024).toFixed(0)}KB
+                      </span>
+                      <button
+                        onClick={() => removePendingFile(f.id)}
+                        className="ml-1 p-0.5 text-muted-foreground hover:text-foreground transition-all duration-200"
+                        aria-label={`Remove ${f.file.name}`}
+                      >
+                        <FiX className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-end gap-3">
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.md,.json,.xml"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                {/* Attach button */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                  className="p-3 text-muted-foreground hover:text-foreground border border-border bg-card hover:bg-secondary transition-all duration-200 rounded-none disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                  aria-label="Attach files"
+                  title="Attach images, videos, or documents"
+                >
+                  <FiPaperclip className="w-4 h-4" />
+                </button>
+
                 <div className="flex-1 border border-border bg-card rounded-none">
                   <textarea
                     ref={textareaRef}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Enter your research interest or ask a follow-up..."
+                    placeholder={pendingFiles.length > 0 ? "Add a message about the attached file(s)..." : "Enter your research interest or ask a follow-up..."}
                     className="w-full bg-transparent px-4 py-3 text-sm font-sans tracking-tight leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none resize-none min-h-[44px] max-h-[160px]"
                     rows={1}
                     disabled={isLoading}
@@ -1058,13 +1321,13 @@ export default function Page() {
                 </div>
                 <button
                   onClick={() => handleSubmit()}
-                  disabled={isLoading || !inputValue.trim()}
+                  disabled={isLoading || (!inputValue.trim() && pendingFiles.length === 0)}
                   className="flex items-center gap-2 px-5 py-3 bg-[hsl(0,70%,55%)] text-white text-sm font-sans tracking-tight rounded-none hover:bg-[hsl(0,70%,45%)] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                 >
                   {isLoading ? (
                     <>
                       <FiLoader className="w-4 h-4 animate-spin" />
-                      <span className="hidden sm:inline">Working...</span>
+                      <span className="hidden sm:inline">{isUploading ? 'Uploading...' : 'Working...'}</span>
                     </>
                   ) : hasMessages ? (
                     <>
@@ -1079,9 +1342,65 @@ export default function Page() {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground mt-2 font-sans tracking-tight text-center">
-                Shift+Enter for new line. ResearchLens discovers and analyzes papers from arXiv.
-              </p>
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'image/*'
+                        fileInputRef.current.click()
+                        // Reset accept after click
+                        setTimeout(() => {
+                          if (fileInputRef.current) fileInputRef.current.accept = 'image/*,video/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.md,.json,.xml'
+                        }, 100)
+                      }
+                    }}
+                    disabled={isLoading}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-all duration-200 disabled:opacity-40 font-sans tracking-tight"
+                    title="Attach image"
+                  >
+                    <FiImage className="w-3 h-3" />
+                    <span className="hidden sm:inline">Image</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'video/*'
+                        fileInputRef.current.click()
+                        setTimeout(() => {
+                          if (fileInputRef.current) fileInputRef.current.accept = 'image/*,video/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.md,.json,.xml'
+                        }, 100)
+                      }
+                    }}
+                    disabled={isLoading}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-all duration-200 disabled:opacity-40 font-sans tracking-tight"
+                    title="Attach video"
+                  >
+                    <FiFilm className="w-3 h-3" />
+                    <span className="hidden sm:inline">Video</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = '.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.md,.json,.xml'
+                        fileInputRef.current.click()
+                        setTimeout(() => {
+                          if (fileInputRef.current) fileInputRef.current.accept = 'image/*,video/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.md,.json,.xml'
+                        }, 100)
+                      }
+                    }}
+                    disabled={isLoading}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-all duration-200 disabled:opacity-40 font-sans tracking-tight"
+                    title="Attach document"
+                  >
+                    <FiFileText className="w-3 h-3" />
+                    <span className="hidden sm:inline">Document</span>
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground font-sans tracking-tight">
+                  Shift+Enter for new line
+                </p>
+              </div>
             </div>
           </div>
         </main>
